@@ -9,6 +9,11 @@ import (
 )
 
 func CreateProduct(c *fiber.Ctx) error {
+	role := c.Locals("role")
+	if role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Only admin can create products"})
+	}
+
 	var input struct {
 		Name        string  `json:"name" validate:"required"`
 		Description string  `json:"description"`
@@ -47,7 +52,6 @@ func CreateProduct(c *fiber.Ctx) error {
 		SecurityStock: input.Inventory.SecurityStock,
 	}
 
-	// Simpan product + inventory via relasi
 	product.Inventory = inventory
 
 	if err := config.DB.Create(&product).Error; err != nil {
@@ -55,4 +59,42 @@ func CreateProduct(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(product)
+}
+
+func DeleteProduct(c *fiber.Ctx) error {
+	role := c.Locals("role")
+	if role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Only admin can delete products"})
+	}
+
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "ID is required"})
+	}
+
+	var product models.Product
+	if err := config.DB.First(&product, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Product not found"})
+	}
+	if err := config.DB.Delete(&product).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete product"})
+	}
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Product deleted successfully"})
+}
+
+func GetProductByID(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var product models.Product
+	if err := config.DB.Preload("Inventory").First(&product, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Product not found"})
+	}
+	return c.JSON(product)
+}
+
+func GetProducts(c *fiber.Ctx) error {
+	var products []models.Product
+	if err := config.DB.Preload("Inventory").Find(&products).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch products"})
+	}
+	return c.JSON(products)
 }
